@@ -13,8 +13,16 @@ export default class {
         height: 100
     };
     runningStates = {
-        state: 'INIT' // INIT 初始化 CROP 剪裁 SCALE 缩放
+        state: 'INIT'
     };
+    STATE_MAP = {
+        // 初始化
+        'INIT': 'INIT',
+        // 剪裁
+        'CROP': 'CROP',
+        // 缩放
+        'SCALE': 'SCALE'
+    }
     constructor({ container, image, width, height, suitableSize }) {
         this.container = container;
         this.image = image;
@@ -35,17 +43,18 @@ export default class {
      * @returns {string}
      */
     get cursorStyle() {
-        return this.runningStates.state === 'CROP' ? 'crosshair' : 'auto';
+        return this.runningStates.state === this.STATE_MAP.CROP ? 'crosshair' : 'auto';
     }
     /**
      * 设置状态
      * @param STATE
      */
     set toggleRunningState(STATE) {
-        if (this.runningStates.state !== STATE)
-            this.runningStates.state = STATE
-        else
-            this.runningStates.state = 'INIT'
+        if (this.runningStates.state !== STATE) {
+            this.runningStates.state = this.STATE_MAP[STATE] || this.STATE_MAP.INIT
+        } else {
+            this.runningStates.state = this.STATE_MAP.INIT
+        }
     }
 
     /**
@@ -137,7 +146,7 @@ export default class {
     }
 
     /**
-     * 剪裁
+     * 外部调用剪裁
      */
     startCrop() {
         this.toggleRunningState = 'CROP';
@@ -157,6 +166,7 @@ export default class {
         } = this;
         let mouseDown = false;
         canvasDOM.onmousedown = e => {
+            if (this.runningStates.state !== 'CROP') return;
             start.x = e.offsetX;
             start.y = e.offsetY;
             mouseDown = true;
@@ -167,19 +177,25 @@ export default class {
             end.y = e.offsetY;
             this.svg.innerHTML = '';
             const PATH =  document.createElementNS("http://www.w3.org/2000/svg", 'path');
-            PATH.setAttribute('d', `M${start.x} ${start.y} L${start.x} ${end.y} L${end.x} ${end.y} L${end.x} ${start.y}Z`);
-            PATH.setAttribute('stroke', '#2790db');
+            PATH.setAttribute('d', `M${start.x},${start.y} L${start.x},${end.y} L${end.x},${end.y} L${end.x},${start.y}Z`);
+            PATH.setAttribute('stroke', '#409EFF');
             PATH.setAttribute('stroke-width', '1');
             PATH.setAttribute('fill', 'transparent');
-            PATH.style.strokeDasharray = '10';
-            PATH.style.strokeDashoffset = '10';
             this.svg.appendChild(PATH);
         }
         canvasDOM.onmouseup = () => {
             mouseDown = false;
+            this.toggleRunningState = 'INIT';
+            this.canvasDOM.style.cursor = this.cursorStyle;
+            this.handleCrop({startX: start.x, startY: start.y, endX: end.x, endY: end.y})
         }
-        // canvasDOM.onmouseout = () => {
-        //     mouseDown = false;
-        // }
     }
+
+    /**
+     * 剪裁图片
+     */
+    handleCrop({startX, startY, endX, endY}) {
+        console.log(startX, startY, endX, endY)
+    }
+
 }

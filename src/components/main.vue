@@ -55,10 +55,10 @@ export default {
 </script>
 <style lang="less">
 #container{
-    padding-top: 20px;
+    //padding-top: 20px;
     width: 600px;
     height: 600px;
-    margin: 0 auto;
+    margin: 10px auto;
     img{
         width: 300px;
     }
