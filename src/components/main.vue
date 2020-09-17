@@ -1,7 +1,9 @@
 <template>
     <div class="main-container">
-        <Button @click="crop">剪裁</Button>
-        <Button @click="move">移动</Button>
+        剪裁：<Button @click="crop">剪裁</Button>
+        移动：<Button @click="move">移动</Button>
+        角度：<input type="range" v-model="deg" min="0" max="360"/>
+        重载：<Button @click="move">重载</Button>
         <div id="container"></div>
     </div>
 </template>
@@ -11,7 +13,13 @@ export default {
     name: 'mainEle',
     data() {
         return {
+            deg: 0,
             instance: null
+        }
+    },
+    watch: {
+        deg(val) {
+            this.rotate(val);
         }
     },
     async mounted() {
@@ -28,8 +36,8 @@ export default {
             svg: document.getElementById('svg'),
             // 默认绘制大小
             suitableSize: {
-                width: 600,
-                height: 600,
+                width: 500,
+                height: 500,
             }
         });
     },
@@ -54,6 +62,9 @@ export default {
         // 移动
         move() {
             this.instance.startMove();
+        },
+        rotate(deg) {
+            this.instance.startRotate(deg);
         }
     }
 }

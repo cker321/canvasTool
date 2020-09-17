@@ -1,3 +1,5 @@
+import { loadImg } from '@/components/util';
+
 export default class {
     canvasDOM;
     canvasCTX;
@@ -22,7 +24,8 @@ export default class {
         y: 0,
         scale: 1,
         width: 0,
-        height: 0
+        height: 0,
+        deg: 0
     };
     STATE_MAP = {
         // 初始化
@@ -197,7 +200,6 @@ export default class {
      * 生成图片
      */
     buildImg(img, dw, dh, fix= null) {
-        // drawImage(image, sx, sy, sw, sh, dw, dh）;
         return new Promise(resolve => {
             const canvas = document.createElement('CANVAS');
             canvas.width = dw;
@@ -209,16 +211,21 @@ export default class {
             } else {
                 context.drawImage(img, 0, 0, dw, dh);
             }
-            canvas.toBlob(blob => {
-                const newImg = document.createElement('IMG'),
-                    url = URL.createObjectURL(blob);
-                newImg.onload = function() {
-                    URL.revokeObjectURL(url);
-                    resolve(newImg);
-                };
-                newImg.src = url;
-            });
+            const newImg = document.createElement('IMG'),
+                url = canvas.toDataURL('image/png', 1.0);
+            newImg.onload = function() {
+                resolve(newImg);
+            };
+            newImg.src = url;
+            // document.body.appendChild(newImg);
         });
+    }
+
+    /**
+     * 生成历史记录
+     */
+    buildHistoryLog() {
+        localStorage.setItem('canvasTool', JSON.stringify(this.imageProp));
     }
 
     /**
@@ -249,7 +256,10 @@ export default class {
             if (!mouseDown) return;
             end.x = e.offsetX;
             end.y = e.offsetY;
-            this.svg.innerHTML = '';
+            const nodes = this.svg.childNodes;
+            nodes.forEach(item => {
+                this.svg.removeChild(item);
+            })
             const PATH = document.createElementNS("http://www.w3.org/2000/svg", 'path');
             PATH.setAttribute('d', `M${start.x},${start.y} L${start.x},${end.y} L${end.x},${end.y} L${end.x},${start.y}Z`);
             PATH.setAttribute('stroke', '#409EFF');
@@ -258,10 +268,15 @@ export default class {
             this.svg.appendChild(PATH);
         }
         canvasDOM.onmouseup = () => {
-            mouseDown = false;
+            if (this.runningStates.state !== 'CROP') return;
+            // this.handleCrop({startX: start.x, startY: start.y, endX: end.x, endY: end.y});
+            this.cropByImageData({startX: start.x, startY: start.y, endX: end.x, endY: end.y})
+            const nodes = this.svg.childNodes;
+            nodes.forEach(item => {
+                this.svg.removeChild(item);
+            })
             this.toggleRunningState = 'INIT';
-            this.handleCrop({startX: start.x, startY: start.y, endX: end.x, endY: end.y});
-            this.svg.innerHTML = '';
+            mouseDown = false;
         }
     }
 
@@ -273,13 +288,20 @@ export default class {
      * @param endY 结束截取位置X
      */
     async handleCrop({startX, startY, endX, endY}) {
+        const translateX = this.imageProp.x + this.imageProp.width / 2,
+            translateY = this.imageProp.y + this.imageProp.height / 2;
         this.canvasCTX.clearRect(0, 0, this.canvasProp.width, this.canvasProp.height);
+        this.canvasCTX.save();
+        // 设置旋转中心 以图片为中心
+        this.canvasCTX.translate(translateX, translateY);
+        this.canvasCTX.rotate((Math.PI * this.imageProp.deg) / 180);
+        this.canvasCTX.translate(-translateX, -translateY);
         this.canvasCTX.drawImage(
             this.imageProp.img,
-            (startX - this.imageProp.x) / this.imageProp.scale,
-            (startY - this.imageProp.y) / this.imageProp.scale,
-            (endX - startX) / this.imageProp.scale,
-            (endY - startY) / this.imageProp.scale,
+            (startX - this.imageProp.x),
+            (startY - this.imageProp.y),
+            (endX - startX),
+            (endY - startY),
             this.canvasProp.width / 2 - (endX - startX) / 2,
             this.canvasProp.height / 2 - (endY - startY) / 2,
             endX - startX,
@@ -294,14 +316,26 @@ export default class {
             this.imageProp.width,
             this.imageProp.height,
             {
-                sx: (startX - this.imageProp.x) / this.imageProp.scale,
-                sy: (startY - this.imageProp.y) / this.imageProp.scale,
-                sw: (endX - startX) / this.imageProp.scale,
-                sh: (endY - startY) / this.imageProp.scale
+                sx: (startX - this.imageProp.x),
+                sy: (startY - this.imageProp.y),
+                sw: (endX - startX),
+                sh: (endY - startY)
             }
         );
+        this.imageProp.x = this.canvasProp.width / 2 - (endX - startX) / 2;
+        this.imageProp.y = this.canvasProp.height / 2 - (endY - startY) / 2;
+        // 生成记录
+        this.buildHistoryLog();
+        this.canvasCTX.restore();
     }
 
+    async cropByImageData({startX, startY, endX, endY}) {
+        const imgData = this.canvasCTX.getImageData(startX, startY, endX - startX, endY - startY);
+        this.canvasCTX.clearRect(0, 0, this.canvasProp.width, this.canvasProp.height);
+        this.canvasCTX.putImageData(imgData,0,0);
+        const img = await loadImg(this.canvasDOM.toDataURL('image/png', 1.0))
+        this.imageProp.img = await this.buildImg(img, img.width, img.height);
+    }
 
     /**
      * 图片移动
@@ -356,9 +390,16 @@ export default class {
      * @param y
      */
     handleMove(x, y) {
+        this.canvasCTX.clearRect(0, 0, this.canvasProp.width, this.canvasProp.height);
+        this.canvasCTX.save()
         this.imageProp.x = x;
         this.imageProp.y = y;
-        this.canvasCTX.clearRect(0, 0, this.canvasProp.width, this.canvasProp.height);
+        const translateX = this.imageProp.x + this.imageProp.width / 2,
+            translateY = this.imageProp.y + this.imageProp.height / 2;
+        // 设置旋转中心 以图片为中心
+        this.canvasCTX.translate(translateX, translateY);
+        this.canvasCTX.rotate(Math.PI * this.imageProp.deg / 180);
+        this.canvasCTX.translate(-translateX, -translateY);
         this.canvasCTX.drawImage(
             this.imageProp.img,
             x,
@@ -366,5 +407,36 @@ export default class {
             this.imageProp.width,
             this.imageProp.height
         );
+        // 生成记录
+        this.buildHistoryLog();
+        this.canvasCTX.restore();
+    }
+
+    /**
+     * 旋转
+     * @param deg
+     */
+    startRotate(deg) {
+        const translateX = this.imageProp.x + this.imageProp.width / 2,
+              translateY = this.imageProp.y + this.imageProp.height / 2;
+        this.canvasCTX.clearRect(0, 0, this.canvasProp.width, this.canvasProp.height)
+        this.canvasCTX.save()
+        // 设置旋转中心 以图片为中心
+        this.canvasCTX.translate(translateX, translateY);
+        this.canvasCTX.rotate((Math.PI * deg) / 180);
+        this.canvasCTX.translate(-translateX, -translateY);
+        this.canvasCTX.drawImage(this.imageProp.img, this.imageProp.x, this.imageProp.y);
+        // 置回
+        this.canvasCTX.restore()
+        this.imageProp.deg = deg;
+        // this.buildImg();
+    }
+
+    /**
+     * 缩放
+     * @param ratio
+     */
+    startScale(ratio) {
+        console.log(ratio);
     }
 }
