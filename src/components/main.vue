@@ -1,6 +1,7 @@
 <template>
     <div class="main-container">
         <Button @click="crop">剪裁</Button>
+        <Button @click="move">移动</Button>
         <div id="container"></div>
     </div>
 </template>
@@ -27,14 +28,14 @@ export default {
             svg: document.getElementById('svg'),
             // 默认绘制大小
             suitableSize: {
-                width: 400,
-                height: 300,
+                width: 600,
+                height: 600,
             }
         });
     },
     methods: {
         // 加载图片
-        loadImg(path = '/demo.jpg') {
+        loadImg(path = '/demo2.jpg') {
             return new Promise(resolve => {
                 const img = new Image();
                 img.onload = () => {
@@ -49,6 +50,10 @@ export default {
         // 剪裁
         crop() {
             this.instance.startCrop();
+        },
+        // 移动
+        move() {
+            this.instance.startMove();
         }
     }
 }

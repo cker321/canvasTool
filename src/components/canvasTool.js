@@ -15,22 +15,52 @@ export default class {
     runningStates = {
         state: 'INIT'
     };
+    // 图片改动记录
+    imageProp = {
+        img: null,
+        x: 0,
+        y: 0,
+        scale: 1,
+        width: 0,
+        height: 0
+    };
     STATE_MAP = {
         // 初始化
-        'INIT': 'INIT',
+        'INIT': {
+            value: 'INIT',
+            style: 'auto'
+        },
         // 剪裁
-        'CROP': 'CROP',
+        'CROP':  {
+            value: 'CROP',
+            style: 'crosshair'
+        },
         // 缩放
-        'SCALE': 'SCALE'
-    }
-    constructor({ container, image, width, height, suitableSize }) {
+        'SCALE': {
+            value: 'SCALE',
+            style: 'auto'
+        },
+        // 准备移动
+        'AWAIT_MOVE': {
+            value: 'AWAIT_MOVE',
+            style: 'grab'
+        },
+        // 移动
+        'MOVING': {
+            value: 'MOVING',
+            style: 'grabbing'
+        }
+    };
+
+    constructor({container, image, width, height, suitableSize}) {
         this.container = container;
+        // 原始图片对象
         this.image = image;
         this.canvasProp = {
             ...this.canvasProp,
             width,
             height,
-            ratio: width/ height
+            ratio: width / height
         };
         this.suitableSize = {...this.canvasProp, ...suitableSize};
         this.suitableSize.ratio = this.suitableSize.width / this.suitableSize.height;
@@ -43,18 +73,20 @@ export default class {
      * @returns {string}
      */
     get cursorStyle() {
-        return this.runningStates.state === this.STATE_MAP.CROP ? 'crosshair' : 'auto';
+        return this.STATE_MAP[this.runningStates.state] ? this.STATE_MAP[this.runningStates.state].style : 'auto';
     }
+
     /**
      * 设置状态
      * @param STATE
      */
     set toggleRunningState(STATE) {
         if (this.runningStates.state !== STATE) {
-            this.runningStates.state = this.STATE_MAP[STATE] || this.STATE_MAP.INIT
+            this.runningStates.state = (this.STATE_MAP[STATE] && this.STATE_MAP[STATE].value) || this.STATE_MAP.INIT.value
         } else {
-            this.runningStates.state = this.STATE_MAP.INIT
+            this.runningStates.state = this.STATE_MAP.INIT.value
         }
+        this.canvasDOM.style.cursor = this.cursorStyle
     }
 
     /**
@@ -71,12 +103,10 @@ export default class {
     }
 
     /**
-     * 创建SVG 用于剪裁图片
+     * 创建SVG 用于剪裁图片画框
      */
     initSvg() {
         this.svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        this.svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
-        // this.svg.setAttribute('viewBox', `${this.canvasProp.width} ${this.canvasProp.height}`);
         this.svg.setAttribute('width', `${this.canvasProp.width}`);
         this.svg.setAttribute('height', `${this.canvasProp.height}`);
         this.svg.style.position = 'absolute';
@@ -84,8 +114,6 @@ export default class {
         this.svg.style.height = `${this.canvasProp.height}px`;
         this.svg.style.top = '0px';
         this.svg.style.left = '0px';
-        // this.svg.style.width = this.canvasProp.width;
-        // this.svg.style.height = this.canvasProp.height;
         this.svg.style.pointerEvents = 'none';
         this.container.appendChild(this.svg);
     }
@@ -94,29 +122,36 @@ export default class {
      * 初始化绘制
      * @param suitable 是否合理化绘制，按合理的宽高进行缩放
      */
-    initDraw(suitable = true) {
+    async initDraw(suitable = true) {
         const {
-            image: { naturalWidth, naturalHeight},
-            canvasProp: { width: canvasWidth, height: canvasHeight}
+            image: {naturalWidth, naturalHeight},
+            canvasProp: {width: canvasWidth, height: canvasHeight}
         } = this;
         // 绘制相关参数
         let param = {
             width: naturalWidth,
             height: naturalHeight,
             ratio: naturalWidth / naturalHeight,
-            sx: 0,
-            sy: 0
+            dx: 0,
+            dy: 0,
+            scale: 1
         };
         // 合理化绘制
         if (suitable) {
-            // 宽度大于高度 优先适配宽度
             param = this.getSuitAbleSize(param)
         }
         // 居中绘制起点
-        param.sx = canvasWidth / 2 - param.width / 2;
-        param.sy = canvasHeight / 2 - param.height / 2;
+        param.dx = canvasWidth / 2 - param.width / 2;
+        param.dy = canvasHeight / 2 - param.height / 2;
+        // 保存到记录
+        this.imageProp.x = param.dx;
+        this.imageProp.y = param.dy;
+        this.imageProp.scale = param.scale;
+        this.imageProp.width = param.width;
+        this.imageProp.height = param.height;
         // 绘制
-        this.canvasCTX.drawImage(this.image, param.sx, param.sy, param.width, param.height);
+        this.canvasCTX.drawImage(this.image, param.dx, param.dy, param.width, param.height);
+        this.imageProp.img = await this.buildImg(this.image, param.width, param.height);
     }
 
     /**
@@ -128,43 +163,82 @@ export default class {
         const returnValue = {
             width: 1,
             height: 1,
-            ratio: 1
+            ratio: 1,
+            scale: 1
         };
-        const { width: oWidth, height: oHeight} = originalParam
-        const { suitableSize: { width: suitableWidth, height: suitableHeight, ratio}} = this;
+        const {width: oWidth, height: oHeight} = originalParam
+        const {suitableSize: {width: suitableWidth, height: suitableHeight, ratio}} = this;
         if ((oHeight > suitableHeight || oWidth > suitableWidth)) {
             // 宽度大于高度 优先适配宽度
             if (originalParam.ratio > ratio) {
                 returnValue.width = suitableWidth;
-                returnValue.height = oHeight * ( returnValue.width / oWidth );
+                returnValue.height = oHeight * (returnValue.width / oWidth);
+                returnValue.scale = returnValue.width / oWidth;
             } else {
                 returnValue.height = suitableHeight;
-                returnValue.width = oWidth * ( returnValue.height / oHeight );
+                returnValue.width = oWidth * (returnValue.height / oHeight);
+                returnValue.scale = returnValue.height / oHeight;
             }
         }
         return returnValue;
     }
 
     /**
+     * 鼠标是否在图片上
+     * @param x
+     * @param y
+     */
+    isIn(x, y) {
+        return x >= this.imageProp.x && x <= this.imageProp.x + +this.imageProp.width
+            && y >= this.imageProp.y && y <= this.imageProp.y + +this.imageProp.height;
+    }
+
+    /**
+     * 生成图片
+     */
+    buildImg(img, dw, dh, fix= null) {
+        // drawImage(image, sx, sy, sw, sh, dw, dh）;
+        return new Promise(resolve => {
+            const canvas = document.createElement('CANVAS');
+            canvas.width = dw;
+            canvas.height = dh;
+            const context = canvas.getContext('2d');
+            if (fix) {
+                const {sx, sy, sw, sh} = fix
+                context.drawImage(img, sx, sy, sw, sh, 0, 0, dw, dh);
+            } else {
+                context.drawImage(img, 0, 0, dw, dh);
+            }
+            canvas.toBlob(blob => {
+                const newImg = document.createElement('IMG'),
+                    url = URL.createObjectURL(blob);
+                newImg.onload = function() {
+                    URL.revokeObjectURL(url);
+                    resolve(newImg);
+                };
+                newImg.src = url;
+            });
+        });
+    }
+
+    /**
      * 外部调用剪裁
      */
     startCrop() {
-        this.toggleRunningState = 'CROP';
-        this.canvasDOM.style.cursor = this.cursorStyle;
-        const start = {
-            x: 0,
-            y: 0
-        }, end = {
-            x: 0,
-            y: 0
-        }, {
-            canvasDOM,
-            // canvasProp: {
-            //     width,
-            //     height
-            // }
-        } = this;
+        // 按下标记
         let mouseDown = false;
+        this.toggleRunningState = 'CROP';
+        const start = {
+                x: 0,
+                y: 0
+            },
+            end = {
+                x: 0,
+                y: 0
+            },
+            {
+                canvasDOM
+            } = this;
         canvasDOM.onmousedown = e => {
             if (this.runningStates.state !== 'CROP') return;
             start.x = e.offsetX;
@@ -172,11 +246,11 @@ export default class {
             mouseDown = true;
         }
         canvasDOM.onmousemove = e => {
-            if (!mouseDown) return ;
+            if (!mouseDown) return;
             end.x = e.offsetX;
             end.y = e.offsetY;
             this.svg.innerHTML = '';
-            const PATH =  document.createElementNS("http://www.w3.org/2000/svg", 'path');
+            const PATH = document.createElementNS("http://www.w3.org/2000/svg", 'path');
             PATH.setAttribute('d', `M${start.x},${start.y} L${start.x},${end.y} L${end.x},${end.y} L${end.x},${start.y}Z`);
             PATH.setAttribute('stroke', '#409EFF');
             PATH.setAttribute('stroke-width', '1');
@@ -186,16 +260,111 @@ export default class {
         canvasDOM.onmouseup = () => {
             mouseDown = false;
             this.toggleRunningState = 'INIT';
-            this.canvasDOM.style.cursor = this.cursorStyle;
-            this.handleCrop({startX: start.x, startY: start.y, endX: end.x, endY: end.y})
+            this.handleCrop({startX: start.x, startY: start.y, endX: end.x, endY: end.y});
+            this.svg.innerHTML = '';
         }
     }
 
     /**
-     * 剪裁图片
+     * 实现剪裁图片
+     * @param startX 开始截取位置X
+     * @param startY 开始截取位置X
+     * @param endX 结束截取位置X
+     * @param endY 结束截取位置X
      */
-    handleCrop({startX, startY, endX, endY}) {
-        console.log(startX, startY, endX, endY)
+    async handleCrop({startX, startY, endX, endY}) {
+        this.canvasCTX.clearRect(0, 0, this.canvasProp.width, this.canvasProp.height);
+        this.canvasCTX.drawImage(
+            this.imageProp.img,
+            (startX - this.imageProp.x) / this.imageProp.scale,
+            (startY - this.imageProp.y) / this.imageProp.scale,
+            (endX - startX) / this.imageProp.scale,
+            (endY - startY) / this.imageProp.scale,
+            this.canvasProp.width / 2 - (endX - startX) / 2,
+            this.canvasProp.height / 2 - (endY - startY) / 2,
+            endX - startX,
+            endY - startY
+        );
+        // 设置图片尺寸
+        this.imageProp.width = endX - startX;
+        this.imageProp.height = endY - startY;
+        // 生成图片
+        this.imageProp.img = await this.buildImg(
+            this.imageProp.img,
+            this.imageProp.width,
+            this.imageProp.height,
+            {
+                sx: (startX - this.imageProp.x) / this.imageProp.scale,
+                sy: (startY - this.imageProp.y) / this.imageProp.scale,
+                sw: (endX - startX) / this.imageProp.scale,
+                sh: (endY - startY) / this.imageProp.scale
+            }
+        );
     }
 
+
+    /**
+     * 图片移动
+     */
+    startMove() {
+        // 按下标记
+        let mouseDown = false;
+        const start = {
+                x: 0,
+                y: 0
+            },
+            end = {
+                x: 0,
+                y: 0
+            },
+            {
+                canvasDOM
+            } = this;
+        canvasDOM.onmousedown = e => {
+            if (this.runningStates.state !== 'AWAIT_MOVE') return;
+            // 判断鼠标是否在图片上
+            if (!this.isIn(e.offsetX, e.offsetY)) return;
+            mouseDown = true;
+            this.toggleRunningState = 'MOVING';
+            start.x = e.offsetX - this.imageProp.x;
+            start.y = e.offsetY - this.imageProp.y;
+        }
+        canvasDOM.onmousemove = e => {
+            this.toggleRunningState = 'INIT';
+            if (!this.isIn(e.offsetX, e.offsetY)) return;
+            this.toggleRunningState = 'AWAIT_MOVE';
+            // 鼠标在canvas内部 改变鼠标样式
+            if (!mouseDown) return;
+            this.toggleRunningState = 'MOVING';
+            end.x = e.offsetX;
+            end.y = e.offsetY;
+            this.handleMove(end.x - start.x, end.y - start.y);
+        }
+        canvasDOM.onmouseup = () => {
+            mouseDown = false;
+            this.toggleRunningState = 'INIT';
+        }
+        canvasDOM.onmouseout = () => {
+            mouseDown = false;
+            this.toggleRunningState = 'INIT';
+        }
+    }
+
+    /**
+     * 实现移动
+     * @param x
+     * @param y
+     */
+    handleMove(x, y) {
+        this.imageProp.x = x;
+        this.imageProp.y = y;
+        this.canvasCTX.clearRect(0, 0, this.canvasProp.width, this.canvasProp.height);
+        this.canvasCTX.drawImage(
+            this.imageProp.img,
+            x,
+            y,
+            this.imageProp.width,
+            this.imageProp.height
+        );
+    }
 }
