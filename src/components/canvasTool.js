@@ -1,4 +1,13 @@
-import { loadImg } from '@/components/util';
+import {
+    buildImg,
+    getC,
+    getDeg,
+    getFourPoints,
+    getTransform,
+    getTransformNew,
+    newGetTransform,
+    rad2Angle
+} from '@/components/util';
 
 export default class {
     canvasDOM;
@@ -25,6 +34,8 @@ export default class {
         scale: 1,
         width: 0,
         height: 0,
+        offsetX: 0,
+        offsetY: 0,
         deg: 0
     };
     STATE_MAP = {
@@ -34,7 +45,7 @@ export default class {
             style: 'auto'
         },
         // 剪裁
-        'CROP':  {
+        'CROP': {
             value: 'CROP',
             style: 'crosshair'
         },
@@ -123,13 +134,23 @@ export default class {
 
     /**
      * 初始化绘制
-     * @param suitable 是否合理化绘制，按合理的宽高进行缩放
+     * @returns {Promise<void>}
      */
-    async initDraw(suitable = true) {
+    async initDraw() {
+        this.drawImg(true, this.image)
+        this.imageProp.img = await this.buildImg(this.image, this.imageProp.width, this.imageProp.height);
+    }
+
+    /**
+     * 绘制图片
+     * @param suitable 是否合理化绘制，按合理的宽高进行缩放
+     * @param img
+     */
+    drawImg(suitable = true, img) {
         const {
-            image: {naturalWidth, naturalHeight},
-            canvasProp: {width: canvasWidth, height: canvasHeight}
-        } = this;
+                canvasProp: {width: canvasWidth, height: canvasHeight}
+            } = this,
+            {naturalWidth, naturalHeight} = img;
         // 绘制相关参数
         let param = {
             width: naturalWidth,
@@ -153,8 +174,7 @@ export default class {
         this.imageProp.width = param.width;
         this.imageProp.height = param.height;
         // 绘制
-        this.canvasCTX.drawImage(this.image, param.dx, param.dy, param.width, param.height);
-        this.imageProp.img = await this.buildImg(this.image, param.width, param.height);
+        this.canvasCTX.drawImage(img, param.dx, param.dy, param.width, param.height);
     }
 
     /**
@@ -164,9 +184,9 @@ export default class {
      */
     getSuitAbleSize(originalParam) {
         const returnValue = {
-            width: 1,
-            height: 1,
-            ratio: 1,
+            width: originalParam.width,
+            height: originalParam.height,
+            ratio: originalParam.ratio,
             scale: 1
         };
         const {width: oWidth, height: oHeight} = originalParam
@@ -198,27 +218,14 @@ export default class {
 
     /**
      * 生成图片
+     * @param img 图片对象 或 imageData
+     * @param dw
+     * @param dh
+     * @param fix
+     * @returns {Promise<unknown>}
      */
-    buildImg(img, dw, dh, fix= null) {
-        return new Promise(resolve => {
-            const canvas = document.createElement('CANVAS');
-            canvas.width = dw;
-            canvas.height = dh;
-            const context = canvas.getContext('2d');
-            if (fix) {
-                const {sx, sy, sw, sh} = fix
-                context.drawImage(img, sx, sy, sw, sh, 0, 0, dw, dh);
-            } else {
-                context.drawImage(img, 0, 0, dw, dh);
-            }
-            const newImg = document.createElement('IMG'),
-                url = canvas.toDataURL('image/png', 1.0);
-            newImg.onload = function() {
-                resolve(newImg);
-            };
-            newImg.src = url;
-            // document.body.appendChild(newImg);
-        });
+    buildImg(img, dw, dh, fix = null) {
+        return buildImg(img, dw, dh, fix)
     }
 
     /**
@@ -281,7 +288,7 @@ export default class {
     }
 
     /**
-     * 实现剪裁图片
+     * 实现剪裁图片 弃用
      * @param startX 开始截取位置X
      * @param startY 开始截取位置X
      * @param endX 结束截取位置X
@@ -329,12 +336,23 @@ export default class {
         this.canvasCTX.restore();
     }
 
+    /**
+     * 实现剪裁图片
+     * @param startX
+     * @param startY
+     * @param endX
+     * @param endY
+     * @returns {Promise<void>}
+     */
     async cropByImageData({startX, startY, endX, endY}) {
-        const imgData = this.canvasCTX.getImageData(startX, startY, endX - startX, endY - startY);
+        const cropWidth = endX - startX;
+        const cropHeight = endY - startY;
+        const imgData = this.canvasCTX.getImageData(startX, startY, cropWidth, cropHeight);
         this.canvasCTX.clearRect(0, 0, this.canvasProp.width, this.canvasProp.height);
-        this.canvasCTX.putImageData(imgData,0,0);
-        const img = await loadImg(this.canvasDOM.toDataURL('image/png', 1.0))
-        this.imageProp.img = await this.buildImg(img, img.width, img.height);
+        this.imageProp.img = await this.buildImg(imgData, cropWidth, cropHeight);
+        this.imageProp.width = cropWidth;
+        this.imageProp.height = cropHeight;
+        this.drawImg(true, this.imageProp.img);
     }
 
     /**
@@ -394,12 +412,6 @@ export default class {
         this.canvasCTX.save()
         this.imageProp.x = x;
         this.imageProp.y = y;
-        const translateX = this.imageProp.x + this.imageProp.width / 2,
-            translateY = this.imageProp.y + this.imageProp.height / 2;
-        // 设置旋转中心 以图片为中心
-        this.canvasCTX.translate(translateX, translateY);
-        this.canvasCTX.rotate(Math.PI * this.imageProp.deg / 180);
-        this.canvasCTX.translate(-translateX, -translateY);
         this.canvasCTX.drawImage(
             this.imageProp.img,
             x,
@@ -414,11 +426,12 @@ export default class {
 
     /**
      * 旋转
-     * @param deg
+     * @param deg 旋转角度
+     * @param done Boolean
      */
-    startRotate(deg) {
+    startRotate(deg, done) {
         const translateX = this.imageProp.x + this.imageProp.width / 2,
-              translateY = this.imageProp.y + this.imageProp.height / 2;
+            translateY = this.imageProp.y + this.imageProp.height / 2;
         this.canvasCTX.clearRect(0, 0, this.canvasProp.width, this.canvasProp.height)
         this.canvasCTX.save()
         // 设置旋转中心 以图片为中心
@@ -429,14 +442,54 @@ export default class {
         // 置回
         this.canvasCTX.restore()
         this.imageProp.deg = deg;
-        // this.buildImg();
+        // 设置旋转完成得图像到imageProp
+        if (done) {
+            // 斜边
+            // const r = (getC(this.imageProp.width , this.imageProp.height));
+            // 求出夹角（弧度）
+            // const newDeg = getDeg(this.imageProp.width, this.imageProp.height) + (Math.PI * deg) / 180;
+            // const width = Math.abs(Math.sin((Math.PI * deg) / 180) * r);
+            // const height = Math.abs(Math.cos((Math.PI * deg) / 180) * r);
+            // console.log(width.toFixed(2));
+            // console.log(height.toFixed(2));
+            // let {x, y} = getTransform(this.imageProp.x, this.imageProp.y, (Math.PI / 180 * deg));
+            // let {x, y} = getTransformNew(this.imageProp.x, this.imageProp.y, this.imageProp.width, this.imageProp.height, (Math.PI / 180 * deg));
+            // const imgData = this.canvasCTX.getImageData(x, y, width, height);
+            // this.buildImg(imgData,width, height);
+            console.log(this.imageProp.x, this.imageProp.y);
+            const points = getFourPoints(this.imageProp.x, this.imageProp.y, this.imageProp.width, this.imageProp.height, (Math.PI * deg) / 180);
+            for (let key in points) {
+                console.log(key);
+                console.log(points[key]);
+            }
+            // console.log(x, y);
+        }
     }
 
     /**
      * 缩放
-     * @param ratio
+     * @param zoomVal
+     * @param done
      */
-    startScale(ratio) {
-        console.log(ratio);
+    async startScale(zoomVal, done) {
+        const translateX = this.imageProp.x + this.imageProp.width / 2,
+            translateY = this.imageProp.y + this.imageProp.height / 2;
+        this.canvasCTX.clearRect(0, 0, this.canvasProp.width, this.canvasProp.height)
+        this.canvasCTX.save()
+        // 设置旋转中心 以图片为中心
+        this.canvasCTX.translate(translateX, translateY);
+        this.canvasCTX.scale(zoomVal, zoomVal);
+        this.canvasCTX.translate(-translateX, -translateY);
+        this.canvasCTX.drawImage(this.imageProp.img, this.imageProp.x, this.imageProp.y);
+        // 置回
+        this.canvasCTX.restore();
+        this.imageProp.scale = zoomVal;
+        // 设置缩放完成得图像到imageProp
+        if (done) {
+            const width = this.imageProp.width * zoomVal;
+            const height = this.imageProp.height * zoomVal;
+            this.imageProp.x = this.canvasDOM.width / 2 - width / 2;
+            this.imageProp.y = this.canvasDOM.height / 2 - height / 2;
+        }
     }
 }
