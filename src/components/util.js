@@ -116,7 +116,7 @@ export const getTransformNew = (x1, y1, width, height, rotate) => {
  * @param rotate
  */
 export const getFourPoints = (x, y, width, height, rotate) => {
-    // 中心点
+    // 中心点1
     const center = {
         x: x + width / 2,
         y: y + height / 2
