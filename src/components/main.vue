@@ -1,29 +1,36 @@
 <template>
     <div class="main-container">
-        剪裁：<Button @click="crop">剪裁</Button>
-        移动：<Button @click="move">移动</Button>
-        角度：<input type="range" v-model="deg" min="0" max="360"/>
-        重载：<Button @click="move">重载</Button>
+        <div>剪裁：</div><Button @click="crop">剪裁</Button>
+        <div>移动：</div><Button @click="move">移动</Button>
+        <div>角度：{{deg}}°</div><input style="width:500px" type="range" v-model="deg" min="0" step="1" max="360" @change="rotate(deg, true)"/>
+        <div>缩放：{{zoom}}倍</div><input style="width:200px" type="range" v-model="zoom" min="0.05" step="0.1" max="2"/>
+        <div>重载：</div><Button @click="move">重载</Button>
         <div id="container"></div>
     </div>
 </template>
 <script>
 import canvasTool from './canvasTool';
+import { loadImg } from "@/components/util";
+
 export default {
     name: 'mainEle',
     data() {
         return {
             deg: 0,
+            zoom: 1,
             instance: null
         }
     },
     watch: {
         deg(val) {
             this.rotate(val);
+        },
+        zoom(val) {
+            this.scale(val)
         }
     },
     async mounted() {
-        const img = await this.loadImg();
+        const img = await loadImg('/demo2.jpg');
         if (!img) {
             alert('图片加载错误！');
             return;
@@ -42,19 +49,6 @@ export default {
         });
     },
     methods: {
-        // 加载图片
-        loadImg(path = '/demo2.jpg') {
-            return new Promise(resolve => {
-                const img = new Image();
-                img.onload = () => {
-                    resolve(img);
-                };
-                img.onerror = () => {
-                    resolve(false);
-                }
-                img.src = path;
-            })
-        },
         // 剪裁
         crop() {
             this.instance.startCrop();
@@ -63,8 +57,11 @@ export default {
         move() {
             this.instance.startMove();
         },
-        rotate(deg) {
-            this.instance.startRotate(deg);
+        rotate(deg, done = false) {
+            this.instance.startRotate(deg, done);
+        },
+        scale(zoom) {
+            this.instance.startScale(zoom);
         }
     }
 }
