@@ -137,8 +137,8 @@ export const getFourPoints = (x, y, width, height, rotate) => {
             y: center.y - Math.sin(newDegree - rotate - rotate) * halfC
         },
         rightBottom: {
-            x: center.x + Math.cos(newDegree - rotate - rotate) * halfC,
-            y: center.y + Math.sin(newDegree - rotate - rotate) * halfC
+            x: center.x + Math.cos(newDegree) * halfC,
+            y: center.y + Math.sin(newDegree) * halfC
         },
     };
 }

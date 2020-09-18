@@ -1,12 +1,6 @@
 import {
     buildImg,
-    getC,
-    getDeg,
     getFourPoints,
-    getTransform,
-    getTransformNew,
-    newGetTransform,
-    rad2Angle
 } from '@/components/util';
 
 export default class {
@@ -456,13 +450,30 @@ export default class {
             // let {x, y} = getTransformNew(this.imageProp.x, this.imageProp.y, this.imageProp.width, this.imageProp.height, (Math.PI / 180 * deg));
             // const imgData = this.canvasCTX.getImageData(x, y, width, height);
             // this.buildImg(imgData,width, height);
-            console.log(this.imageProp.x, this.imageProp.y);
             const points = getFourPoints(this.imageProp.x, this.imageProp.y, this.imageProp.width, this.imageProp.height, (Math.PI * deg) / 180);
+            let minx = 0, minY = 0, maxX = 0, maxY = 0;
+            let init = true;
             for (let key in points) {
-                console.log(key);
-                console.log(points[key]);
+                let point = points[key];
+                if (point.x < minx || init) {
+                    minx = point.x;
+                }
+                if (point.y < minY || init) {
+                    minY = point.y;
+                }
+                if (point.x > maxX || init) {
+                    maxX = point.x;
+                }
+                if (point.y > maxY || init) {
+                    maxY = point.y;
+                }
+                init = false;
             }
-            // console.log(x, y);
+            let start = {
+                x: minx,
+                y: minY
+            }
+            console.log(start);
         }
     }
 
