@@ -1,6 +1,11 @@
 import {
+    base64ToBlob,
+    brightnessContrastPhotoshop,
     buildImg,
+    colored2BW,
+    colorRGB,
     getFourPoints,
+    HSLAdjustment,
 } from '@/components/util';
 
 export default class {
@@ -30,7 +35,19 @@ export default class {
         height: 0,
         offsetX: 0,
         offsetY: 0,
-        deg: 0
+        deg: 0,
+        imageData: null,
+        colorParams: {
+            brightness: 0,
+            contrast: 0,
+            saturation: 0,
+            RGB: {
+                R: 0,
+                G: 0,
+                B: 0
+            },
+            BW: false
+        }
     };
     STATE_MAP = {
         // 初始化
@@ -165,6 +182,7 @@ export default class {
         this.imageProp.x = param.dx;
         this.imageProp.y = param.dy;
         this.imageProp.scale = param.scale;
+        this.imageProp.scale = 1;
         this.imageProp.width = param.width;
         this.imageProp.height = param.height;
         // 绘制
@@ -226,7 +244,7 @@ export default class {
      * 生成历史记录
      */
     buildHistoryLog() {
-        localStorage.setItem('canvasTool', JSON.stringify(this.imageProp));
+        // localStorage.setItem('canvasTool', JSON.stringify(this.imageProp));
     }
 
     /**
@@ -279,55 +297,6 @@ export default class {
             this.toggleRunningState = 'INIT';
             mouseDown = false;
         }
-    }
-
-    /**
-     * 实现剪裁图片 弃用
-     * @param startX 开始截取位置X
-     * @param startY 开始截取位置X
-     * @param endX 结束截取位置X
-     * @param endY 结束截取位置X
-     */
-    async handleCrop({startX, startY, endX, endY}) {
-        const translateX = this.imageProp.x + this.imageProp.width / 2,
-            translateY = this.imageProp.y + this.imageProp.height / 2;
-        this.canvasCTX.clearRect(0, 0, this.canvasProp.width, this.canvasProp.height);
-        this.canvasCTX.save();
-        // 设置旋转中心 以图片为中心
-        this.canvasCTX.translate(translateX, translateY);
-        this.canvasCTX.rotate((Math.PI * this.imageProp.deg) / 180);
-        this.canvasCTX.translate(-translateX, -translateY);
-        this.canvasCTX.drawImage(
-            this.imageProp.img,
-            (startX - this.imageProp.x),
-            (startY - this.imageProp.y),
-            (endX - startX),
-            (endY - startY),
-            this.canvasProp.width / 2 - (endX - startX) / 2,
-            this.canvasProp.height / 2 - (endY - startY) / 2,
-            endX - startX,
-            endY - startY
-        );
-        // 设置图片尺寸
-        this.imageProp.width = endX - startX;
-        this.imageProp.height = endY - startY;
-        // 生成图片
-        this.imageProp.img = await this.buildImg(
-            this.imageProp.img,
-            this.imageProp.width,
-            this.imageProp.height,
-            {
-                sx: (startX - this.imageProp.x),
-                sy: (startY - this.imageProp.y),
-                sw: (endX - startX),
-                sh: (endY - startY)
-            }
-        );
-        this.imageProp.x = this.canvasProp.width / 2 - (endX - startX) / 2;
-        this.imageProp.y = this.canvasProp.height / 2 - (endY - startY) / 2;
-        // 生成记录
-        this.buildHistoryLog();
-        this.canvasCTX.restore();
     }
 
     /**
@@ -420,10 +389,11 @@ export default class {
 
     /**
      * 旋转
-     * @param deg 旋转角度
+     * @param rotate 旋转弧度
      * @param done Boolean
      */
-    startRotate(deg, done) {
+    async startRotate(rotate, done) {
+        const deg = rotate - this.imageProp.deg;
         const translateX = this.imageProp.x + this.imageProp.width / 2,
             translateY = this.imageProp.y + this.imageProp.height / 2;
         this.canvasCTX.clearRect(0, 0, this.canvasProp.width, this.canvasProp.height)
@@ -435,21 +405,8 @@ export default class {
         this.canvasCTX.drawImage(this.imageProp.img, this.imageProp.x, this.imageProp.y);
         // 置回
         this.canvasCTX.restore()
-        this.imageProp.deg = deg;
         // 设置旋转完成得图像到imageProp
         if (done) {
-            // 斜边
-            // const r = (getC(this.imageProp.width , this.imageProp.height));
-            // 求出夹角（弧度）
-            // const newDeg = getDeg(this.imageProp.width, this.imageProp.height) + (Math.PI * deg) / 180;
-            // const width = Math.abs(Math.sin((Math.PI * deg) / 180) * r);
-            // const height = Math.abs(Math.cos((Math.PI * deg) / 180) * r);
-            // console.log(width.toFixed(2));
-            // console.log(height.toFixed(2));
-            // let {x, y} = getTransform(this.imageProp.x, this.imageProp.y, (Math.PI / 180 * deg));
-            // let {x, y} = getTransformNew(this.imageProp.x, this.imageProp.y, this.imageProp.width, this.imageProp.height, (Math.PI / 180 * deg));
-            // const imgData = this.canvasCTX.getImageData(x, y, width, height);
-            // this.buildImg(imgData,width, height);
             const points = getFourPoints(this.imageProp.x, this.imageProp.y, this.imageProp.width, this.imageProp.height, (Math.PI * deg) / 180);
             let minx = 0, minY = 0, maxX = 0, maxY = 0;
             let init = true;
@@ -473,7 +430,13 @@ export default class {
                 x: minx,
                 y: minY
             }
-            console.log(start);
+            this.imageProp.width = maxX - minx;
+            this.imageProp.height = maxY - minY;
+            const imageData = this.canvasCTX.getImageData(start.x, start.y, this.imageProp.width, this.imageProp.height);
+            this.imageProp.img = await this.buildImg(imageData, this.imageProp.width, this.imageProp.height);
+            this.imageProp.x = start.x;
+            this.imageProp.y = start.y;
+            this.imageProp.deg = rotate;
         }
     }
 
@@ -483,24 +446,131 @@ export default class {
      * @param done
      */
     async startScale(zoomVal, done) {
-        const translateX = this.imageProp.x + this.imageProp.width / 2,
-            translateY = this.imageProp.y + this.imageProp.height / 2;
+        this.canvasCTX.save();
+        const newZoom = zoomVal/ this.imageProp.scale;
+        const translateX = +this.imageProp.x + +this.imageProp.width / 2,
+            translateY = +this.imageProp.y + +this.imageProp.height / 2;
         this.canvasCTX.clearRect(0, 0, this.canvasProp.width, this.canvasProp.height)
-        this.canvasCTX.save()
-        // 设置旋转中心 以图片为中心
+        // 设置缩放中心 以图片为中心
         this.canvasCTX.translate(translateX, translateY);
-        this.canvasCTX.scale(zoomVal, zoomVal);
+        this.canvasCTX.scale(newZoom, newZoom);
         this.canvasCTX.translate(-translateX, -translateY);
         this.canvasCTX.drawImage(this.imageProp.img, this.imageProp.x, this.imageProp.y);
         // 置回
         this.canvasCTX.restore();
-        this.imageProp.scale = zoomVal;
-        // 设置缩放完成得图像到imageProp
+        // 设置缩放后的图片到全局
         if (done) {
-            const width = this.imageProp.width * zoomVal;
-            const height = this.imageProp.height * zoomVal;
-            this.imageProp.x = this.canvasDOM.width / 2 - width / 2;
-            this.imageProp.y = this.canvasDOM.height / 2 - height / 2;
+            this.imageProp.scale = zoomVal;
+            this.imageProp.width = (this.imageProp.width * newZoom).toFixed(0);
+            this.imageProp.height = (this.imageProp.height * newZoom).toFixed(0);
+            // this.imageProp.x = this.imageProp.x * zoomVal / 2;
+            // this.imageProp.y = this.imageProp.y * zoomVal / 2;
+            // const imageData = this.canvasCTX.getImageData(this.imageProp.x, this.imageProp.y, width, height);
+            this.imageProp.img = await this.buildImg(this.imageProp.img, this.imageProp.width, this.imageProp.height);
+        }
+    }
+
+    /**
+     * 改变图像色彩平衡
+     * @param R
+     * @param G
+     * @param B
+     * @param done
+     */
+    changeBalance(R, G, B, done = false) {
+        this.imageProp.colorParams.RGB = {R, G, B};
+        this.imageColorChangeCenter(done);
+    }
+
+    /**
+     * 亮度
+     * @param brightness
+     * @param done
+     */
+    changeBrightness(brightness, done) {
+        this.imageProp.colorParams.brightness = brightness;
+        this.imageColorChangeCenter(done);
+    }
+
+    /**
+     * 对比
+     * @param contrast
+     * @param done
+     */
+    changeContrast(contrast, done = false) {
+        this.imageProp.colorParams.contrast = contrast;
+        this.imageColorChangeCenter(done);
+    }
+
+    /**
+     * 饱和
+     * @param saturation
+     * @param done
+     */
+    changeSaturation(saturation, done = false) {
+        this.imageProp.colorParams.saturation = saturation;
+        this.imageColorChangeCenter(done);
+    }
+
+    /**
+     * 黑白
+     * @param val
+     */
+    colored2BW(val) {
+        this.imageProp.colorParams.BW = val;
+        this.imageColorChangeCenter(true);
+    }
+
+    /**
+     * 图像色彩处理中心
+     * @param done
+     * @returns {Promise<void>}
+     */
+    async imageColorChangeCenter(done = false) {
+        const {brightness, contrast, saturation, RGB, BW} = this.imageProp.colorParams;
+        let currentImageData = this.canvasCTX.getImageData(this.imageProp.x, this.imageProp.y, this.imageProp.width, this.imageProp.height);
+        if (!this.imageProp.imageData) {
+            this.imageProp.imageData = currentImageData;
+        }
+        let imageData = this.imageProp.imageData;
+        // 色彩平衡处理
+        if (RGB.R !== 0 || RGB.G !== 0 || RGB.B !== 0)  {
+            imageData = colorRGB(imageData, RGB.R, RGB.G, RGB.B);
+        }
+        // 亮度处理
+        if (brightness !== 0) {
+            imageData = brightnessContrastPhotoshop(imageData, brightness, 0);
+        }
+        // 对比度处理
+        if (contrast !== 0) {
+            imageData = brightnessContrastPhotoshop(imageData, 0, contrast);
+        }
+        // 饱和度处理
+        if (saturation !== 0) {
+            imageData = HSLAdjustment(imageData, saturation);
+        }
+        // 黑白处理
+        BW && (imageData = colored2BW(imageData));
+        this.canvasCTX.putImageData(imageData, this.imageProp.x, this.imageProp.y);
+        if (done) this.imageProp.img = await this.buildImg(imageData, this.imageProp.width, this.imageProp.height);
+    }
+
+    /**
+     * 保存
+     */
+    saveFile() {
+        const fileName = new Date().getTime() * Math.random();
+        let content = this.canvasDOM.toDataURL('image/png', 1.0);
+        let blob = base64ToBlob(content);
+        if (navigator.msSaveBlob) {
+            navigator.msSaveBlob(blob, fileName + '.jpg');
+        } else {
+            let aLink = document.createElement('a');
+            let evt = document.createEvent('HTMLEvents');
+            evt.initEvent('click', true, true);
+            aLink.download = fileName + '.jpg';
+            aLink.href = URL.createObjectURL(blob);
+            aLink.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
         }
     }
 }
