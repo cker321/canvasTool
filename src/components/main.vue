@@ -21,11 +21,12 @@
         <div class="wrap">
             <div id="container"></div>
         </div>
+        <div class="history"></div>
     </div>
 </template>
 <script>
 import canvasTool from './canvasTool';
-import { loadImg } from "@/components/util";
+import { loadImg } from "@/components/canvasTool/util";
 
 export default {
     name: 'mainEle',

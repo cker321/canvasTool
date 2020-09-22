@@ -6,7 +6,7 @@ import {
     colorRGB,
     getFourPoints,
     HSLAdjustment,
-} from '@/components/util';
+} from '@/components/canvasTool/util';
 
 export default class {
     canvasDOM;
@@ -244,6 +244,7 @@ export default class {
      * 生成历史记录
      */
     buildHistoryLog() {
+        console.log(this.imageProp);
         // localStorage.setItem('canvasTool', JSON.stringify(this.imageProp));
     }
 
@@ -355,9 +356,12 @@ export default class {
             end.y = e.offsetY;
             this.handleMove(end.x - start.x, end.y - start.y);
         }
-        canvasDOM.onmouseup = () => {
+        canvasDOM.onmouseup = e => {
+            end.x = e.offsetX;
+            end.y = e.offsetY;
             mouseDown = false;
             this.toggleRunningState = 'INIT';
+            this.handleMove(end.x - start.x, end.y - start.y);
         }
         canvasDOM.onmouseout = () => {
             mouseDown = false;
@@ -383,7 +387,7 @@ export default class {
             this.imageProp.height
         );
         // 生成记录
-        this.buildHistoryLog();
+        // this.buildHistoryLog();
         this.canvasCTX.restore();
     }
 
@@ -439,6 +443,7 @@ export default class {
             this.imageProp.deg = rotate;
         }
     }
+
 
     /**
      * 缩放
