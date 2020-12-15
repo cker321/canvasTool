@@ -1,13 +1,13 @@
 import {
     base64ToBlob,
-    brightnessContrastPhotoshop,
     buildImg,
     colored2BW,
     colorRGB,
     getFourPoints,
     HSLAdjustment,
+    brightnessContrastPhotoshop
 } from '@/components/canvasTool/util';
-
+import STATE from './state';
 export default class {
     canvasDOM;
     canvasCTX;
@@ -49,33 +49,7 @@ export default class {
             BW: false
         }
     };
-    STATE_MAP = {
-        // 初始化
-        'INIT': {
-            value: 'INIT',
-            style: 'auto'
-        },
-        // 剪裁
-        'CROP': {
-            value: 'CROP',
-            style: 'crosshair'
-        },
-        // 缩放
-        'SCALE': {
-            value: 'SCALE',
-            style: 'auto'
-        },
-        // 准备移动
-        'AWAIT_MOVE': {
-            value: 'AWAIT_MOVE',
-            style: 'grab'
-        },
-        // 移动
-        'MOVING': {
-            value: 'MOVING',
-            style: 'grabbing'
-        }
-    };
+    STATE_MAP = STATE;
 
     constructor({container, image, width, height, suitableSize}) {
         this.container = container;
@@ -565,7 +539,7 @@ export default class {
      */
     saveFile() {
         const fileName = new Date().getTime() * Math.random();
-        let content = this.canvasDOM.toDataURL('image/png', 1.0);
+        let content = this.canvasDOM.toDataURL('image/jpeg', 1.0);
         let blob = base64ToBlob(content);
         if (navigator.msSaveBlob) {
             navigator.msSaveBlob(blob, fileName + '.jpg');
